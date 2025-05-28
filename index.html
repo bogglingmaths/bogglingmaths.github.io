@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Boggle</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/expr-eval@2.0.2/dist/bundle.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .game-cell {
+            width: 70px;
+            height: 70px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 1px solid #d1d5db; /* gray-300 */
+            cursor: pointer;
+            font-size: 1.5rem;
+            transition: background-color 0.2s, transform 0.1s ease-out;
+            user-select: none;
+            border-radius: 50%; /* Make cells circular */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            /* New Default Colors */
+            background-color: #ffffff; /* White background */
+        }
+        .game-cell.selected {
+            /* New Selected Colors */
+            background-color: #708090; /* Battleship Grey */
+            color: #ffffff; /* Bold white numbers/operations */
+            border-width: 2px;
+            border-color: #708090; /* Battleship Grey border */
+            transform: scale(1.05);
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+        }
+        .game-cell.operator {
+            color: #000000; /* Bolder black for operators */
+            font-weight: bold;
+        }
+        .game-cell.number {
+            color: #000000; /* Bolder black for numbers */
+            font-weight: bold;
+        }
+        .game-cell:hover:not(.selected) {
+            background-color: #f0f0f0; /* Slightly lighter grey on hover for unselected */
+        }
+        #game-grid-container {
+            position: relative; /* Container for grid and canvas */
+            width: calc(70px * 4 + 4px * 3); /* 280 + 12 = 292px */
+            height: calc(70px * 4 + 4px * 3);
+            margin: 0 auto;
+            margin-bottom: 1.5rem;
+        }
+        #game-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 70px);
+            grid-template-rows: repeat(4, 70px);
+            gap: 4px;
+            position: relative; /* Ensure grid cells are positioned relative to this */
+            z-index: 1; /* Place grid cells above canvas */
+        }
+        #connection-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0; /* Place canvas behind grid cells */
+        }
+        .control-button {
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            font-weight: 600;
+            transition: background-color 0.2s;
+        }
+        .primary-button {
+            background-color: #f59e0b; /* amber-500 */
+            color: white;
+        }
+        .primary-button:hover {
+            background-color: #d97706; /* amber-600 */
+        }
+        .secondary-button {
+            background-color: #6b7280; /* gray-500 */
+            color: white;
+        }
+        .secondary-button:hover {
+            background-color: #4b5563; /* gray-600 */
+        }
+        #player-answer {
+            width: 100px;
+            text-align: center;
+        }
+        .status-message {
+            min-height: 1.5rem; /* To prevent layout shifts */
+            font-weight: 500;
+        }
+        .status-correct {
+            color: #16a34a; /* green-600 */
+        }
+        .status-incorrect {
+            color: #dc2626; /* red-600 */
+        }
+        .status-info {
+            color: #0ea5e9; /* sky-600 */
+        }
+        .disabled-cell {
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+        .found-expression-item {
+            background-color: #fefce8; /* amber-50 */
+            border-left: 4px solid #f59e0b; /* amber-500 */
+            padding: 0.5rem 0.75rem;
+            margin-bottom: 0.25rem;
+            border-radius: 0.25rem;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9rem;
+            color: #4b5563; /* gray-600 */
+        }
+
+        @media (max-width: 640px) {
+            .game-cell {
+                width: 60px;
+                height: 60px;
+                font-size: 1.25rem;
+            }
+            #game-grid-container {
+                width: calc(60px * 4 + 4px * 3); /* 240 + 12 = 252px */
+                height: calc(60px * 4 + 4px * 3);
+            }
+            #game-grid {
+                grid-template-columns: repeat(4, 60px);
+                grid-template-rows: repeat(4, 60px);
+            }
+            .control-button {
+                padding: 0.4rem 0.8rem;
+            }
+        }
+    </style>
+</head>
+<body class="bg-amber-50 text-slate-800 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="bg-white shadow-xl rounded-lg p-6 md:p-8 w-full max-w-md">
+        <h1 class="text-3xl font-bold text-center text-amber-700 mb-6">Math Boggle</h1>
+
+        <div id="game-grid-container">
+            <canvas id="connection-canvas"></canvas>
+            <div id="game-grid">
+            </div>
+        </div>
+
+        <div class="text-center mb-4">
+            <p class="text-sm text-gray-600">Current Expression:</p>
+            <p id="current-expression-display" class="text-xl font-mono h-8 flex items-center justify-center border border-gray-300 rounded-md p-2 bg-gray-50">&nbsp;</p>
+        </div>
+
+        <div class="flex flex-col sm:flex-row items-center justify-center space-y-2 sm:space-y-0 sm:space-x-2 mb-4">
+            <input type="text" id="player-answer" placeholder="Answer" class="border border-gray-300 rounded-md px-3 py-2 text-lg focus:ring-amber-500 focus:border-amber-500">
+            <button id="submit-answer-button" class="control-button primary-button w-full sm:w-auto">Submit</button>
+        </div>
+        
+        <p id="message-area" class="status-message text-center mb-4">&nbsp;</p>
+
+        <div class="text-center mb-6">
+            <p class="text-sm text-gray-600">Remaining Possible Unique Answers:</p>
+            <p id="total-answers-display" class="text-2xl font-bold text-sky-600">0</p>
+        </div>
+
+        <div class="mb-6 w-full">
+            <p class="text-sm text-gray-600 text-center mb-2">Your Found Expressions:</p>
+            <div id="found-expressions-list" class="max-h-40 overflow-y-auto border border-gray-200 rounded-md p-2 bg-gray-50">
+                </div>
+        </div>
+
+        <div class="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-2">
+            <button id="new-game-button" class="control-button primary-button w-full">New Game</button>
+            <button id="clear-selection-button" class="control-button secondary-button w-full">Clear Selection</button>
+        </div>
+    </div>
+
+    <script>
+        const GRID_SIZE = 4;
+        const OPERATORS = ['+', '-', '*', '/'];
+        const MIN_NUMBER = -10;
+        const MAX_NUMBER = 20;
+        const NUMBER_PROBABILITY = 0.7; 
+
+        let gridData = [];
+        let currentPath = [];
+        let allPossibleUniqueResults = new Set(); // Stores all unique numerical answers from the solver
+        let playerFoundUniqueAnswers = new Set(); // Stores unique numerical answers found by the player
+        let playerFoundExpressionsDisplay = []; // Stores the exact expression strings found by the player for display
+        let parser;
+
+        const gameGridContainer = document.getElementById('game-grid-container');
+        const gameGridElement = document.getElementById('game-grid');
+        const connectionCanvas = document.getElementById('connection-canvas');
+        const ctx = connectionCanvas.getContext('2d');
+
+        const currentExpressionDisplay = document.getElementById('current-expression-display');
+        const totalAnswersDisplay = document.getElementById('total-answers-display');
+        const newGameButton = document.getElementById('new-game-button');
+        const clearSelectionButton = document.getElementById('clear-selection-button');
+        const playerAnswerInput = document.getElementById('player-answer');
+        const submitAnswerButton = document.getElementById('submit-answer-button');
+        const messageArea = document.getElementById('message-area');
+        const foundExpressionsList = document.getElementById('found-expressions-list');
+
+        document.addEventListener('DOMContentLoaded', () => {
+            parser = new exprEval.Parser();
+            setupCanvasSize();
+            window.addEventListener('resize', setupCanvasSize);
+            newGameButton.addEventListener('click', startNewGame);
+            clearSelectionButton.addEventListener('click', clearCurrentSelection);
+            submitAnswerButton.addEventListener('click', handleSubmitPlayerAnswer);
+            playerAnswerInput.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    handleSubmitPlayerAnswer();
+                }
+            });
+            startNewGame();
+        });
+
+        function setupCanvasSize() {
+            const containerRect = gameGridContainer.getBoundingClientRect();
+            connectionCanvas.width = containerRect.width;
+            connectionCanvas.height = containerRect.height;
+            drawConnectionLines();
+        }
+
+        function startNewGame() {
+            currentPath = [];
+            allPossibleUniqueResults.clear();
+            playerFoundUniqueAnswers.clear();
+            playerFoundExpressionsDisplay = [];
+            
+            generateGridData();
+            renderGrid();
+            updateCurrentExpressionDisplay();
+            drawConnectionLines();
+            renderFoundExpressions(); // Clear the displayed list
+            
+            totalAnswersDisplay.textContent = 'Calculating...';
+            messageArea.textContent = '\u00A0'; 
+            playerAnswerInput.value = '';
+            
+            // Allow a brief moment for the UI to update before starting the heavy solver
+            setTimeout(() => {
+                solveBoard();
+                updateRemainingAnswersDisplay(); // Update with the initial total
+            }, 100);
+        }
+
+        function generateGridData() {
+            gridData = [];
+            for (let r = 0; r < GRID_SIZE; r++) {
+                const row = [];
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    const isNumber = Math.random() < NUMBER_PROBABILITY;
+                    let value;
+                    if (isNumber) {
+                        value = Math.floor(Math.random() * (MAX_NUMBER - MIN_NUMBER + 1)) + MIN_NUMBER;
+                    } else {
+                        value = OPERATORS[Math.floor(Math.random() * OPERATORS.length)];
+                    }
+                    row.push({ value, r, c, id: `cell-${r}-${c}`, isVisited: false, type: typeof value === 'number' ? 'number' : 'operator' });
+                }
+                gridData.push(row);
+            }
+        }
+
+        function renderGrid() {
+            gameGridElement.innerHTML = '';
+            gridData.forEach(row => {
+                row.forEach(cellData => {
+                    const cellElement = document.createElement('div');
+                    cellElement.id = cellData.id;
+                    cellElement.classList.add('game-cell');
+                    cellElement.classList.add(cellData.type === 'number' ? 'number' : 'operator');
+                    
+                    if (cellData.value === '*') {
+                        cellElement.textContent = 'x';
+                    } else if (cellData.value === '/') {
+                        cellElement.textContent = '÷';
+                    }
+                    else {
+                        cellElement.textContent = cellData.value;
+                    }
+                    
+                    cellElement.addEventListener('click', () => handleCellClick(cellData, cellElement));
+                    gameGridElement.appendChild(cellElement);
+                });
+            });
+        }
+
+        function handleCellClick(cellData, cellElement) {
+            if (cellData.isVisited) {
+                if (currentPath.length > 0 && currentPath[currentPath.length - 1].id === cellData.id) {
+                    currentPath.pop();
+                    cellData.isVisited = false;
+                    cellElement.classList.remove('selected');
+                    updateCurrentPathVisitedStatus();
+                } else {
+                    showMessage('Cell already used in this path.', 'status-incorrect');
+                    return; 
+                }
+            } else {
+                if (currentPath.length > 0) {
+                    const lastCell = currentPath[currentPath.length - 1];
+                    if (!areAdjacent(lastCell, cellData)) {
+                        showMessage('Select an adjacent cell.', 'status-incorrect');
+                        return;
+                    }
+                    if (lastCell.type === 'number' && cellData.type === 'number') {
+                        showMessage('A number must be followed by an operator.', 'status-incorrect');
+                        return;
+                    }
+                    if (lastCell.type === 'operator' && cellData.type === 'operator') {
+                        showMessage('An operator must be followed by a number.', 'status-incorrect');
+                        return;
+                    }
+                } else { // First cell in path
+                    if (cellData.type === 'operator') {
+                        showMessage('Expression must start with a number.', 'status-incorrect');
+                        return;
+                    }
+                }
+                currentPath.push(cellData);
+                cellData.isVisited = true;
+                cellElement.classList.add('selected');
+            }
+            updateCurrentExpressionDisplay();
+            drawConnectionLines();
+            if (messageArea.textContent !== '\u00A0') showMessage('\u00A0', 'status-info');
+        }
+        
+        function updateCurrentPathVisitedStatus() {
+            const pathIds = new Set(currentPath.map(p => p.id));
+            gridData.forEach(row => {
+                row.forEach(cell => {
+                    const element = document.getElementById(cell.id);
+                    if (pathIds.has(cell.id)) {
+                        cell.isVisited = true;
+                        if (element) element.classList.add('selected');
+                    } else {
+                        cell.isVisited = false;
+                         if (element) element.classList.remove('selected');
+                    }
+                });
+            });
+        }
+
+
+        function areAdjacent(cell1, cell2) {
+            const dr = Math.abs(cell1.r - cell2.r);
+            const dc = Math.abs(cell1.c - cell2.c);
+            return dr <= 1 && dc <= 1 && (dr !== 0 || dc !== 0);
+        }
+
+        function updateCurrentExpressionDisplay() {
+            let exprStr = currentPath.map(cell => {
+                if (cell.value === '*') return 'x';
+                if (cell.value === '/') return '÷';
+                return cell.value;
+            }).join(' ');
+            currentExpressionDisplay.textContent = exprStr || '\u00A0';
+        }
+
+        function clearCurrentSelection() {
+            currentPath.forEach(cell => {
+                cell.isVisited = false;
+                const cellElement = document.getElementById(cell.id);
+                if (cellElement) cellElement.classList.remove('selected');
+            });
+            currentPath = [];
+            updateCurrentExpressionDisplay();
+            drawConnectionLines();
+            playerAnswerInput.value = ''; // Ensure input box is cleared
+            showMessage('\u00A0', 'status-info');
+        }
+        
+        function showMessage(msg, typeClass) {
+            messageArea.textContent = msg;
+            messageArea.className = `status-message text-center mb-4 ${typeClass}`;
+        }
+
+        function handleSubmitPlayerAnswer() {
+            if (currentPath.length === 0) {
+                showMessage('Build an expression first.', 'status-incorrect');
+                return;
+            }
+
+            const lastCellInPath = currentPath[currentPath.length - 1];
+            if (lastCellInPath.type === 'operator') {
+                showMessage('Expression must end with a number.', 'status-incorrect');
+                return;
+            }
+            if (!currentPath.some(c => c.type === 'operator')) {
+                 showMessage('Expression must contain at least one operator.', 'status-incorrect');
+                return;
+            }
+            if (currentPath.length < 3) {
+                showMessage('Expression is too short. Needs at least: number, operator, number.', 'status-incorrect');
+                return;
+            }
+
+            const expressionString = currentPath.map(cell => cell.value).join('');
+            const playerAnswer = parseFloat(playerAnswerInput.value);
+
+            if (isNaN(playerAnswer)) {
+                showMessage('Please enter a valid number as your answer.', 'status-incorrect');
+                return;
+            }
+
+            try {
+                const actualAnswer = parser.evaluate(expressionString);
+                if (isNaN(actualAnswer) || !isFinite(actualAnswer)) {
+                    showMessage('The created expression results in an invalid calculation (e.g., division by zero).', 'status-incorrect');
+                } else if (Math.abs(actualAnswer - playerAnswer) < 0.0001) {
+                    showMessage('Correct!', 'status-correct');
+
+                    const fixedActualAnswer = parseFloat(actualAnswer.toFixed(4)); // Standardize precision
+
+                    // Check if this numerical answer is among the solver's possible answers
+                    // AND if the player hasn't found this exact numerical answer yet
+                    if (allPossibleUniqueResults.has(fixedActualAnswer) && !playerFoundUniqueAnswers.has(fixedActualAnswer)) {
+                        playerFoundUniqueAnswers.add(fixedActualAnswer); // Record the unique numerical answer found by player
+                        updateRemainingAnswersDisplay(); // Update the remaining count
+                    }
+
+                    // Add the expression string to the display list if it's not already there
+                    const currentExpressionDisplayString = currentPath.map(cell => {
+                        if (cell.value === '*') return 'x';
+                        if (cell.value === '/') return '÷';
+                        return cell.value;
+                    }).join(' ');
+
+                    // Format the expression with its answer
+                    const formattedExpressionWithAnswer = `${currentExpressionDisplayString} = ${actualAnswer.toFixed(2)}`;
+
+                    if (!playerFoundExpressionsDisplay.includes(formattedExpressionWithAnswer)) {
+                        playerFoundExpressionsDisplay.push(formattedExpressionWithAnswer);
+                        renderFoundExpressions(); // Render the updated list of found expressions
+                    }
+
+                    // Automatically clear selection and input box after correct answer
+                    clearCurrentSelection();
+                    playerAnswerInput.value = '';
+
+                } else {
+                    showMessage(`Incorrect. The answer is ${actualAnswer.toFixed(2)}.`, 'status-incorrect');
+                }
+            } catch (error) {
+                showMessage('Invalid mathematical expression.', 'status-incorrect');
+            }
+        }
+
+        function updateRemainingAnswersDisplay() {
+            // Calculate remaining by subtracting player's found unique answers from total possible
+            const remainingCount = allPossibleUniqueResults.size - playerFoundUniqueAnswers.size;
+            totalAnswersDisplay.textContent = Math.max(0, remainingCount); // Ensure it doesn't go below zero
+        }
+
+        function renderFoundExpressions() {
+            foundExpressionsList.innerHTML = ''; // Clear previous list
+            if (playerFoundExpressionsDisplay.length === 0) {
+                foundExpressionsList.textContent = 'No expressions found yet.';
+                foundExpressionsList.classList.add('text-center', 'text-gray-400', 'py-4');
+            } else {
+                foundExpressionsList.classList.remove('text-center', 'text-gray-400', 'py-4');
+                playerFoundExpressionsDisplay.forEach(expr => {
+                    const listItem = document.createElement('div');
+                    listItem.classList.add('found-expression-item');
+                    listItem.textContent = expr;
+                    foundExpressionsList.appendChild(listItem);
+                });
+                // Scroll to the bottom to show the latest found expression
+                foundExpressionsList.scrollTop = foundExpressionsList.scrollHeight;
+            }
+        }
+
+
+        function solveBoard() {
+            allPossibleUniqueResults.clear();
+            for (let r = 0; r < GRID_SIZE; r++) {
+                for (let c = 0; c < GRID_SIZE; c++) {
+                    if (gridData[r][c].type === 'number') {
+                        gridData.forEach(row => row.forEach(cell => cell.isVisitedForSolver = false));
+                        findExpressionsRecursive(r, c, [gridData[r][c]], String(gridData[r][c].value));
+                    }
+                }
+            }
+        }
+        
+        function findExpressionsRecursive(r, c, path, expressionStr) {
+            const currentCell = gridData[r][c];
+            currentCell.isVisitedForSolver = true; 
+
+            if (path.length >= 3 && path[path.length - 1].type === 'number' && path.some(p => p.type === 'operator')) {
+                 try {
+                    const result = parser.evaluate(expressionStr);
+                    if (Number.isFinite(result) && !isNaN(result)) {
+                         allPossibleUniqueResults.add(parseFloat(result.toFixed(4)));
+                    }
+                } catch (e) {
+                    // Silent catch for solver, invalid expressions (e.g., division by zero) are ignored
+                }
+            }
+
+            for (let dr = -1; dr <= 1; dr++) {
+                for (let dc = -1; dc <= 1; dc++) {
+                    if (dr === 0 && dc === 0) continue;
+
+                    const nr = r + dr;
+                    const nc = c + dc;
+
+                    if (nr >= 0 && nr < GRID_SIZE && nc >= 0 && nc < GRID_SIZE) {
+                        const nextCell = gridData[nr][nc];
+                        if (!nextCell.isVisitedForSolver) {
+                            const lastInPath = path[path.length - 1];
+
+                            if (lastInPath.type === 'number' && nextCell.type === 'number') {
+                                continue;
+                            }
+                            if (lastInPath.type === 'operator' && nextCell.type === 'operator') {
+                                continue;
+                            }
+                            
+                            path.push(nextCell);
+                            findExpressionsRecursive(nr, nc, path, expressionStr + String(nextCell.value));
+                            path.pop();
+                        }
+                    }
+                }
+            }
+            currentCell.isVisitedForSolver = false; 
+        }
+
+        function getCellCenter(cellData) {
+            const cellElement = document.getElementById(cellData.id);
+            if (!cellElement) return null;
+            const rect = cellElement.getBoundingClientRect();
+            const containerRect = gameGridContainer.getBoundingClientRect();
+            const x = (rect.left + rect.right) / 2 - containerRect.left;
+            const y = (rect.top + rect.bottom) / 2 - containerRect.top;
+            return { x, y };
+        }
+
+        function drawConnectionLines() {
+            ctx.clearRect(0, 0, connectionCanvas.width, connectionCanvas.height);
+            
+            if (currentPath.length < 2) {
+                return;
+            }
+
+            ctx.strokeStyle = '#708090'; /* Battleship Grey for lines */
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            const firstCenter = getCellCenter(currentPath[0]);
+            if (firstCenter) {
+                ctx.moveTo(firstCenter.x, firstCenter.y);
+            }
+
+            for (let i = 1; i < currentPath.length; i++) {
+                const nextCenter = getCellCenter(currentPath[i]);
+                if (nextCenter) {
+                    ctx.lineTo(nextCenter.x, nextCenter.y);
+                }
+            }
+            ctx.stroke();
+        }
+
+    </script>
+</body>
+</html>
